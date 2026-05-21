@@ -1,5 +1,9 @@
-import { X, Printer, Download, Eye, GraduationCap, Calendar, UserCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Printer, Download, GraduationCap, UserCheck } from 'lucide-react';
 import { Pendaftar } from '../types';
+import QRCode from 'qrcode';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface ReceiptModalProps {
   pendaftar: Pendaftar | null;
@@ -7,10 +11,86 @@ interface ReceiptModalProps {
 }
 
 export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) {
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pendaftar?.id) {
+      const verifikasiUrl = `https://spmb-2026-smpn-1-manonjaya.vercel.app/verifikasi/${pendaftar.id}`;
+      QRCode.toDataURL(verifikasiUrl, {
+        width: 256,
+        margin: 1,
+        color: {
+          dark: '#1e293b', // slate-800
+          light: '#ffffff' // white
+        }
+      })
+        .then((url) => {
+          setQrCodeUrl(url);
+          console.log(`DEBUG [SPMB]: Dynamic QR Code generated successfully for ID ${pendaftar.id}`);
+        })
+        .catch((err) => {
+          console.error('DEBUG [SPMB]: Failed to generate QR Code:', err);
+        });
+    }
+  }, [pendaftar?.id]);
+
   if (!pendaftar) return null;
 
   const handlePrint = () => {
-    window.print();
+    try {
+      window.print();
+    } catch (err: any) {
+      alert('Pencetakan gagal atau tidak didukung di perangkat Anda: ' + err.message);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('print-proof-sheet');
+    if (!element) {
+      console.error('Element #print-proof-sheet not found');
+      return;
+    }
+
+    setDownloading(true);
+    setPdfError(null);
+    console.log('DEBUG [SPMB]: Initiating high-resolution PDF download...');
+
+    try {
+      // html2canvas config for sharp A4 proportions
+      const canvas = await html2canvas(element, {
+        scale: 2, // High resolution pixel ratio
+        useCORS: true,
+        logging: true,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 794 // Fits A4 print aspect ratio perfectly
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
+
+      const fileName = `Bukti_Pendaftaran_${pendaftar.id}_${pendaftar.siswa.namaLengkap.replace(/\s+/g, '_')}.pdf`;
+      pdf.save(fileName);
+      console.log('DEBUG [SPMB]: PDF saved successfully as logo/form:', fileName);
+    } catch (err: any) {
+      console.error('DEBUG [SPMB]: PDF generation error:', err);
+      setPdfError('Sistem gagal meluncurkan modul PDF di peramban ini. Harap gunakan tombol "Cetak" konvensional.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -27,12 +107,21 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              id="btn-pdf-action"
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{downloading ? 'Mengunduh...' : 'Unduh PDF'}</span>
+            </button>
+            <button
               onClick={handlePrint}
               id="btn-print-action"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Cetak / PDF</span>
+              <span>Cetak</span>
             </button>
             <button
               onClick={onClose}
@@ -44,6 +133,12 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
           </div>
         </div>
 
+        {pdfError && (
+          <div className="bg-red-50 text-red-700 px-6 py-2.5 text-xs font-semibold text-center border-b border-red-100 print:hidden">
+            ⚠️ {pdfError}
+          </div>
+        )}
+
         {/* PRINTABLE AREA CONTENT */}
         <div 
           id="print-proof-sheet"
@@ -53,7 +148,7 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
           <div className="border-b-4 border-double border-slate-950 pb-5 mb-6 text-center">
             <div className="flex items-center justify-center gap-4">
               {/* Seal Cap Mock */}
-              <div className="w-16 h-16 bg-blue-700 text-white rounded-full flex items-center justify-center font-bold">
+              <div className="w-16 h-16 bg-blue-700 text-white rounded-full flex items-center justify-center font-bold shrink-0">
                 <GraduationCap className="w-10 h-10" />
               </div>
               <div className="text-left">
@@ -129,39 +224,21 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
             </div>
 
             {/* Logo/QR Code alignment & Passport validation Photo */}
-            <div className="sm:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-150/80 rounded-2xl gap-4">
+            <div className="sm:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-150/80 rounded-2xl gap-4 shrink-0">
               <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-slate-400">QR CODE VALIDATOR</span>
               
-              {/* Custom SVG QR Code for absolute fidelity */}
-              <svg className="w-28 h-28 text-slate-800 bg-white p-2 rounded-lg border border-slate-200" viewBox="0 0 100 100">
-                <rect x="0" y="0" width="100" height="100" fill="white" />
-                {/* Simulated high density QR patterns */}
-                <rect x="5" y="5" width="25" height="25" fill="#1e293b" />
-                <rect x="10" y="10" width="15" height="15" fill="white" />
-                <rect x="12" y="12" width="11" height="11" fill="#1e293b" />
-
-                <rect x="70" y="5" width="25" height="25" fill="#1e293b" />
-                <rect x="75" y="10" width="15" height="15" fill="white" />
-                <rect x="77" y="12" width="11" height="11" fill="#1e293b" />
-
-                <rect x="5" y="70" width="25" height="25" fill="#1e293b" />
-                <rect x="10" y="75" width="15" height="15" fill="white" />
-                <rect x="12" y="77" width="11" height="11" fill="#1e293b" />
-
-                {/* Random center noise representation */}
-                <rect x="40" y="40" width="10" height="10" fill="#1e293b" />
-                <rect x="40" y="55" width="5" height="15" fill="#1e293b" />
-                <rect x="55" y="40" width="15" height="5" fill="#1e293b" />
-                <rect x="50" y="50" width="20" height="20" fill="#1e293b" />
-                <rect x="55" y="55" width="10" height="10" fill="white" />
-                <rect x="60" y="60" width="5" height="5" fill="#1e293b" />
-                
-                <rect x="35" y="10" width="5" height="20" fill="#1e293b" />
-                <rect x="45" y="20" width="15" height="5" fill="#1e293b" />
-                <rect x="40" y="75" width="15" height="10" fill="#1e293b" />
-                <rect x="65" y="75" width="10" height="15" fill="#1e293b" />
-                <rect x="75" y="55" width="15" height="5" fill="#1e293b" />
-              </svg>
+              {/* Dynamic generated high fidelity QR Code image state */}
+              {qrCodeUrl ? (
+                <img 
+                  src={qrCodeUrl} 
+                  alt="QR Code Verifikasi" 
+                  className="w-28 h-28 bg-white p-2 rounded-lg border border-slate-200"
+                />
+              ) : (
+                <div className="w-28 h-28 bg-white flex items-center justify-center rounded-lg border border-slate-200 animate-pulse text-[10px] font-mono text-slate-400">
+                  Membuat QR...
+                </div>
+              )}
               
               <p className="text-[9px] text-center text-slate-400 font-mono italic max-w-[150px]">
                 Pindai sandi QR di atas untuk verifikasi otentikasi pangkalan data sekolah.
@@ -187,7 +264,7 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
               <span className="block text-[10px] text-slate-400">Nama Terang</span>
             </div>
             <div className="text-center">
-              <span className="block text-slate-500 font-medium">Manonjaya, {new Date(pendaftar.timestamp).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              <span className="block text-slate-500 font-medium">Manonjaya, {new Date(pendaftar.timestamp || Date.now()).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
               <span className="block font-semibold text-slate-600">Panitia SPMB SMPN 1 Manonjaya</span>
               <div className="h-16 flex items-center justify-center relative">
                 {/* Sealed graphic representation overlay */}
@@ -204,3 +281,4 @@ export default function ReceiptModal({ pendaftar, onClose }: ReceiptModalProps) 
     </div>
   );
 }
+

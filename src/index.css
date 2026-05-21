@@ -1,1 +1,39 @@
 @import "tailwindcss";
+
+@media print {
+  /* Hide everything on the webpage except our printable receipt sheet */
+  body * {
+    visibility: hidden;
+  }
+  
+  #print-proof-sheet, #print-proof-sheet * {
+    visibility: visible;
+  }
+  
+  #print-proof-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  
+  /* Retain all background colors, theme accents and borders when printing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Standard paper constraints */
+  @page {
+    size: A4;
+    margin: 1.2cm;
+  }
+}
+
