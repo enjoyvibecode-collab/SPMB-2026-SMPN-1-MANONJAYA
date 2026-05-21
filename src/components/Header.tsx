@@ -3,8 +3,8 @@ import { GraduationCap, ShieldAlert, Settings, LayoutDashboard, Search, FileText
 import { motion } from 'motion/react';
 
 interface HeaderProps {
-  activeTab: 'home' | 'register' | 'track' | 'faq' | 'admin';
-  setActiveTab: (tab: 'home' | 'register' | 'track' | 'faq' | 'admin') => void;
+  activeTab: 'home' | 'register' | 'track' | 'faq' | 'admin' | 'verifikasi';
+  setActiveTab: (tab: 'home' | 'register' | 'track' | 'faq' | 'admin' | 'verifikasi') => void;
   isAdminLoggedIn: boolean;
   onLogoutAdmin: () => void;
   isMaintenance: boolean;

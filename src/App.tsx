@@ -8,11 +8,13 @@ import TrackingSection from './components/TrackingSection';
 import FAQSection from './components/FAQSection';
 import AdminPanel from './components/AdminPanel';
 import ReceiptModal from './components/ReceiptModal';
+import VerificationPage from './components/VerificationPage';
 import { Pendaftar } from './types';
 import { motion } from 'motion/react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'home' | 'register' | 'track' | 'faq' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'register' | 'track' | 'faq' | 'admin' | 'verifikasi'>('home');
+  const [verifikasiId, setVerifikasiId] = useState<string | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState('');
@@ -45,22 +47,9 @@ export default function App() {
     const matchVerifikasi = pathname.match(/^\/verifikasi\/([A-Za-z0-9-]+)/i);
     if (matchVerifikasi && matchVerifikasi[1]) {
       const registrantId = matchVerifikasi[1].trim().toUpperCase();
-      console.log(`DEBUG [SPMB]: Verifying Registrant QR Code target ID: ${registrantId}`);
-      
-      fetch(`/api/pendaftar/${registrantId}`)
-        .then(res => {
-          if (!res.ok) throw new Error('Data tidak ditemukan');
-          return res.json();
-        })
-        .then(data => {
-          setSelectedReceipt(data);
-          // Clean the address bar URL cleanly without reloading the SPA
-          window.history.replaceState({}, '', '/');
-        })
-        .catch(() => {
-          alert(`Sistem scan berhasil diarahkan, tetapi Nomor Registrasi "${registrantId}" tidak ditemukan atau belum sinkron di database sistem.`);
-          window.history.replaceState({}, '', '/');
-        });
+      console.log(`DEBUG [SPMB]: Routing to QR Verification target ID: ${registrantId}`);
+      setVerifikasiId(registrantId);
+      setActiveTab('verifikasi');
     }
   }, []);
 
@@ -101,7 +90,13 @@ export default function App() {
       {/* Header component navigation */}
       <Header 
         activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
+        setActiveTab={(tab) => {
+          setActiveTab(tab);
+          if (tab !== 'verifikasi') {
+            setVerifikasiId(null);
+            window.history.pushState({}, '', '/');
+          }
+        }} 
         isAdminLoggedIn={isAdminLoggedIn}
         onLogoutAdmin={handleAdminLogout}
         isMaintenance={isMaintenance}
@@ -198,6 +193,18 @@ export default function App() {
         )}
 
         {/* Tab conditionals */}
+        {activeTab === 'verifikasi' && (
+          <VerificationPage 
+            id={verifikasiId}
+            onBackHome={() => {
+              setActiveTab('home');
+              setVerifikasiId(null);
+              window.history.pushState({}, '', '/');
+            }}
+            onOpenReceipt={(rec) => setSelectedReceipt(rec)}
+          />
+        )}
+
         {activeTab === 'register' && (
           <RegistrationForm 
             onSuccess={handleRegistrationSuccess}
