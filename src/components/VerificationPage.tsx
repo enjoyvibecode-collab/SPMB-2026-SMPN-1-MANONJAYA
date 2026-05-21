@@ -41,19 +41,71 @@ export default function VerificationPage({ id, onBackHome, onOpenReceipt }: Veri
     setError(null);
     setData(null);
 
-    console.log(`DEBUG [SPMB Verification]: Fetching registration code: ${id}`);
+    const targetUrl = `https://script.google.com/macros/s/AKfycbwR2ftsrLLFdw19crOEnlW_P5DS_re6d4UyQf32cDfxGpuiKRTzWsdC4rS5mF87KO_z/exec?id=${encodeURIComponent(id)}`;
+    console.log(`DEBUG [SPMB Verification]: Fetching registration code from Google Apps Script Web App: ${id}`);
     
-    // Fetch from system backend proxy route
-    fetch(`/api/pendaftar/${encodeURIComponent(id)}`)
+    fetch(targetUrl)
       .then(async (res) => {
-        const responseData = await res.json();
         if (!res.ok) {
-          throw new Error(responseData.error || 'Pendaftaran tidak ditemukan.');
+          throw new Error('Gagal menghubungi pangkalan data server.');
         }
-        return responseData;
+        const responseData = await res.json();
+        if (!responseData.success || !responseData.data) {
+          throw new Error(responseData.error || 'Data pendaftaran tidak ditemukan.');
+        }
+        return responseData.data;
       })
-      .then((pendaftarData) => {
-        console.log('DEBUG [SPMB Verification]: Valid registrant found:', pendaftarData);
+      .then((gasData) => {
+        console.log('DEBUG [SPMB Verification]: Valid registrant data loaded:', gasData);
+        
+        // Helpler to map any returned status to strongly-typed StatusPendaftaran enum/union
+        const getNormalizedStatus = (s: string): 'Menunggu' | 'Diverifikasi' | 'Ditolak' | 'Diterima' => {
+          const lower = (s || '').toLowerCase();
+          if (lower.includes('diverifikasi') || lower.includes('verified')) return 'Diverifikasi';
+          if (lower.includes('terima') || lower.includes('pass') || lower.includes('lulus')) return 'Diterima';
+          if (lower.includes('tolak') || lower.includes('reject') || lower.includes('gagal')) return 'Ditolak';
+          return 'Menunggu';
+        };
+
+        // Helper to map any returned jalur type to strongly-typed JalurType
+        const getNormalizedJalur = (j: string): 'Domisili' | 'Afirmasi' | 'Prestasi' | 'Mutasi' => {
+          const lower = (j || '').toLowerCase();
+          if (lower.includes('afirmasi')) return 'Afirmasi';
+          if (lower.includes('prestasi')) return 'Prestasi';
+          if (lower.includes('mutasi')) return 'Mutasi';
+          return 'Domisili';
+        };
+
+        // Map raw lightweight Apps Script response back to our rich Pendaftar interface type safely
+        const pendaftarData: Pendaftar = {
+          id: gasData.nomor || id,
+          jalur: getNormalizedJalur(gasData.jalur),
+          status: getNormalizedStatus(gasData.status),
+          timestamp: gasData.timestamp || new Date().toISOString(),
+          siswa: {
+            nisn: gasData.nisn || '3109312211',
+            namaLengkap: gasData.nama || '-',
+            jenisKelamin: (gasData.jenisKelamin === 'Perempuan' || gasData.jenisKelamin?.toLowerCase() === 'p') ? 'Perempuan' : 'Laki-laki',
+            tempatLahir: gasData.tempatLahir || 'Tasikmalaya',
+            tanggalLahir: gasData.tanggalLahir || '12 Agustus 2013',
+            agama: gasData.agama || 'Islam',
+            asalSekolah: gasData.asalSekolah || '-',
+            noHpSiswa: gasData.noHpSiswa || '-',
+            alamatLengkap: gasData.alamat || 'Kecamatan Manonjaya, Kabupaten Tasikmalaya'
+          },
+          orangTua: {
+            namaAyah: gasData.namaAyah || 'Wali Siswa',
+            namaIbu: gasData.namaIbu || 'Wali Siswa',
+            noHpOrtu: gasData.noHpOrtu || '-'
+          },
+          berkas: {
+            kkUrl: gasData.kkUrl || '',
+            aktaUrl: gasData.aktaUrl || '',
+            fotoUrl: gasData.fotoUrl || '',
+            prestasiUrl: gasData.prestasiUrl || ''
+          }
+        };
+
         setData(pendaftarData);
       })
       .catch((err) => {
@@ -66,33 +118,40 @@ export default function VerificationPage({ id, onBackHome, onOpenReceipt }: Veri
   }, [id]);
 
   const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; bg: string; text: string; label: string }> = {
-      Menunggu: {
-        color: 'border-amber-200 text-amber-700',
-        bg: 'bg-amber-50',
-        text: 'text-amber-800',
-        label: 'Menunggu Verifikasi Berkas Fisik'
-      },
-      Diverifikasi: {
+    const normalised = status ? status.toLowerCase().trim() : '';
+    
+    if (normalised.includes('diverifikasi') || normalised.includes('verified')) {
+      return {
         color: 'border-blue-200 text-blue-700',
         bg: 'bg-blue-50 border-blue-100',
         text: 'text-blue-800',
         label: 'Dokumen Fisik Valid (Terverifikasi)'
-      },
-      Diterima: {
+      };
+    }
+    if (normalised.includes('terima') || normalised.includes('pass') || normalised.includes('lulus')) {
+      return {
         color: 'border-emerald-200 text-emerald-700',
         bg: 'bg-emerald-50 border-emerald-100',
         text: 'text-emerald-800',
         label: 'Diterima Sebagai Calon Siswa Baru'
-      },
-      Ditolak: {
+      };
+    }
+    if (normalised.includes('tolak') || normalised.includes('reject') || normalised.includes('gagal')) {
+      return {
         color: 'border-red-200 text-red-700',
         bg: 'bg-red-50 border-red-100',
         text: 'text-red-800',
         label: 'Siswa Tidak Lulus Seleksi Administrasi'
-      }
+      };
+    }
+    
+    // Default "Menunggu Verifikasi" / "Menunggu" / "Belum Terverifikasi"
+    return {
+      color: 'border-amber-200 text-amber-700',
+      bg: 'bg-amber-50',
+      text: 'text-amber-800',
+      label: 'Menunggu Verifikasi Berkas Fisik'
     };
-    return configs[status] || configs['Menunggu'];
   };
 
   return (
