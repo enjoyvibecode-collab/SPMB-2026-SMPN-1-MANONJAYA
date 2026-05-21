@@ -1,0 +1,6 @@
+{
+  "name": "SPMB SMPN 1 Manonjaya",
+  "description": "Sistem Penerimaan Murid Baru (SPMB / PPDB) Online untuk SMPN 1 Manonjaya Tahun Ajaran 2026/2027",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
