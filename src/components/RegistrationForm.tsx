@@ -221,6 +221,18 @@ export default function RegistrationForm({ onSuccess, isMaintenance }: Registrat
     setGlobalError(null);
 
     // Prepare JSON payload according to Apps Script backend requirements
+    const getCleanBase64 = (dataUrl: string) => {
+      if (!dataUrl) return '';
+      const commaIndex = dataUrl.indexOf(',');
+      return commaIndex !== -1 ? dataUrl.substring(commaIndex + 1) : dataUrl;
+    };
+
+    const getMimeType = (dataUrl: string) => {
+      if (!dataUrl) return '';
+      const match = dataUrl.match(/^data:(.*?);base64,/);
+      return match ? match[1] : '';
+    };
+
     const payload = {
       nisn: siswa.nisn,
       nama: siswa.namaLengkap,
@@ -234,10 +246,29 @@ export default function RegistrationForm({ onSuccess, isMaintenance }: Registrat
       namaIbu: orangTua.namaIbu,
       hpOrtu: orangTua.noHpOrtu,
       jalur: jalur,
-      linkKK: berkas.kkContent || '',
-      linkAkta: berkas.aktaContent || '',
-      linkFoto: berkas.fotoContent || '',
-      linkPrestasi: berkas.prestasiContent || ''
+      
+      // Clean base64 strings (mandatory so Apps Script's base64Decode works without non-base64 characters)
+      linkKK: getCleanBase64(berkas.kkContent) || '',
+      linkAkta: getCleanBase64(berkas.aktaContent) || '',
+      linkFoto: getCleanBase64(berkas.fotoContent) || '',
+      linkPrestasi: getCleanBase64(berkas.prestasiContent) || '',
+
+      // File parameters for GAS script customization
+      kkName: berkas.kkName || 'KK.pdf',
+      kkNama: berkas.kkName || 'KK.pdf',
+      kkType: getMimeType(berkas.kkContent) || 'application/pdf',
+
+      aktaName: berkas.aktaName || 'Akta.pdf',
+      aktaNama: berkas.aktaName || 'Akta.pdf',
+      aktaType: getMimeType(berkas.aktaContent) || 'application/pdf',
+
+      fotoName: berkas.fotoName || 'Foto.jpg',
+      fotoNama: berkas.fotoName || 'Foto.jpg',
+      fotoType: getMimeType(berkas.fotoContent) || 'image/jpeg',
+
+      prestasiName: berkas.prestasiName || '',
+      prestasiNama: berkas.prestasiName || '',
+      prestasiType: getMimeType(berkas.prestasiContent) || ''
     };
 
     console.log('DEBUG [SPMB SPMN 1 Manonjaya]: Submitting to Google Apps Script Backend...');

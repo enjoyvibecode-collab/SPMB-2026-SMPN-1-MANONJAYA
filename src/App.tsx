@@ -39,6 +39,29 @@ export default function App() {
         setSpreadsheetUrl(data.spreadsheetUrl || '');
       })
       .catch(() => {});
+
+    // Deep routing check: QR Code /verifikasi/:id parsing
+    const pathname = window.location.pathname;
+    const matchVerifikasi = pathname.match(/^\/verifikasi\/([A-Za-z0-9-]+)/i);
+    if (matchVerifikasi && matchVerifikasi[1]) {
+      const registrantId = matchVerifikasi[1].trim().toUpperCase();
+      console.log(`DEBUG [SPMB]: Verifying Registrant QR Code target ID: ${registrantId}`);
+      
+      fetch(`/api/pendaftar/${registrantId}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Data tidak ditemukan');
+          return res.json();
+        })
+        .then(data => {
+          setSelectedReceipt(data);
+          // Clean the address bar URL cleanly without reloading the SPA
+          window.history.replaceState({}, '', '/');
+        })
+        .catch(() => {
+          alert(`Sistem scan berhasil diarahkan, tetapi Nomor Registrasi "${registrantId}" tidak ditemukan atau belum sinkron di database sistem.`);
+          window.history.replaceState({}, '', '/');
+        });
+    }
   }, []);
 
   const handleAdminLogin = () => {
