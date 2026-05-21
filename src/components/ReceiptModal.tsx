@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Printer, Download, GraduationCap, UserCheck } from 'lucide-react';
 import { Pendaftar } from '../types';
 import QRCode from 'qrcode';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 
 interface ReceiptModalProps {
