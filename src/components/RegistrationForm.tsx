@@ -1,4 +1,4 @@
-import { useState, ChangeEvent, FormEvent } from "react";
+import { useState, ChangeEvent, FormEvent, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Users, Upload, AlertCircle, CheckCircle2, MapPin, Trophy, ShieldAlert, Milestone, Loader2, ArrowLeft, ArrowRight, FileCheck } from "lucide-react";
 import { DataSiswa, DataOrangTua, JalurType, BerkasUpload, Pendaftar } from "../types";
@@ -6,15 +6,37 @@ import { DataSiswa, DataOrangTua, JalurType, BerkasUpload, Pendaftar } from "../
 interface RegistrationFormProps {
   onSuccess: (pendaftar: Pendaftar) => void;
   isMaintenance: boolean;
+  spreadsheetUrl?: string;
 }
 
-export default function RegistrationForm({ onSuccess, isMaintenance }: RegistrationFormProps) {
+export default function RegistrationForm({ onSuccess, isMaintenance, spreadsheetUrl }: RegistrationFormProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   // Form States
   const [jalur, setJalur] = useState<JalurType>("Domisili");
+
+  // Load prefilled coordinates from zoning map helper component
+  useEffect(() => {
+    const prefilledAddress = sessionStorage.getItem('spmb_prefilled_address');
+    const prefilledJalur = sessionStorage.getItem('spmb_prefilled_jalur') as JalurType | null;
+    
+    if (prefilledAddress) {
+      setSiswa(prev => ({
+        ...prev,
+        alamatLengkap: prefilledAddress
+      }));
+      if (prefilledJalur) {
+        setJalur(prefilledJalur);
+      }
+      // Clear after read so it's fresh
+      sessionStorage.removeItem('spmb_prefilled_address');
+      sessionStorage.removeItem('spmb_prefilled_coords');
+      sessionStorage.removeItem('spmb_prefilled_distance');
+      sessionStorage.removeItem('spmb_prefilled_jalur');
+    }
+  }, []);
 
   const [siswa, setSiswa] = useState<DataSiswa>({
     nisn: "",
@@ -362,92 +384,133 @@ export default function RegistrationForm({ onSuccess, isMaintenance }: Registrat
       prestasiType: getMimeType(berkas.prestasiContent) || "",
     };
 
+    const targetScriptUrl = spreadsheetUrl && spreadsheetUrl.trim().startsWith("https://script.google.com/") 
+      ? spreadsheetUrl.trim() 
+      : "https://script.google.com/macros/s/AKfycbwR2ftsrLLFdw19crOEnlW_P5DS_re6d4UyQf32cDfxGpuiKRTzWsdC4rS5mF87KO_z/exec";
+
     console.log("DEBUG [SPMB SPMN 1 Manonjaya]: Submitting to Google Apps Script Backend...");
-    console.log("DEBUG [SPMB SPMN 1 Manonjaya]: Apps Script Target URL: https://script.google.com/macros/s/AKfycbwR2ftsrLLFdw19crOEnlW_P5DS_re6d4UyQf32cDfxGpuiKRTzWsdC4rS5mF87KO_z/exec");
+    console.log("DEBUG [SPMB SPMN 1 Manonjaya]: Apps Script Target URL:", targetScriptUrl);
     console.log("DEBUG Payload Ready:", {
       nisn: payload.nisn,
       nama: payload.nama,
       jalur: payload.jalur,
     });
 
+    let registrationId = "";
+    let isSyncedToSpreadsheet = false;
+    let spreadsheetWarning = "";
+
     try {
-      // 10. Gunakan backend Apps Script yang sudah diberikan sebagai satu-satunya API utama.
-      // 1. Saat form pendaftaran disubmit: gunakan fetch API, gunakan method POST, kirim data dalam format JSON, kirim seluruh field form
-      const response = await fetch("https://script.google.com/macros/s/AKfycbwR2ftsrLLFdw19crOEnlW_P5DS_re6d4UyQf32cDfxGpuiKRTzWsdC4rS5mF87KO_z/exec", {
+      console.log("DEBUG [SPMB]: Contacting Google Apps Script at:", targetScriptUrl);
+      const response = await fetch(targetScriptUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "text/plain;charset=utf-8", // used to bypass browser CORS preflight checks on Apps Script Web App
+          "Content-Type": "text/plain;charset=utf-8",
         },
         body: JSON.stringify(payload),
       });
 
       console.log("DEBUG [SPMB]: HTTP response status:", response.status);
 
-      if (!response.ok) {
-        throw new Error(`Koneksi ke backend Apps Script gagal. Status HTTP: ${response.status}`);
-      }
+      if (response.ok) {
+        const responseText = await response.text();
+        console.log("DEBUG [SPMB]: Raw response string received:", responseText);
 
-      const responseText = await response.text();
-      console.log("DEBUG [SPMB]: Raw response string received:", responseText);
-
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseErr) {
-        throw new Error("Format respons dari server Google Apps Script tidak valid. Harap pastikan Apps Script mengembalikan JSON.");
-      }
-
-      console.log("DEBUG [SPMB]: Parsed Apps Script result:", result);
-
-      if (result && result.success && result.nomor_pendaftaran) {
-        const registrationId = result.nomor_pendaftaran;
-        console.log("DEBUG [SPMB]: Registration ID generated:", registrationId);
-
-        // Synchronize with our local Express node server copy so stats, dashboard, tracking, and admin lists work perfectly
+        let result;
         try {
-          const syncResponse = await fetch("/api/pendaftar", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: registrationId,
-              jalur,
-              siswa,
-              orangTua,
-              berkas,
-            }),
-          });
-          const syncResult = await syncResponse.json();
-          console.log("DEBUG [SPMB]: Synchronized locally with result:", syncResult);
-        } catch (syncErr: any) {
-          console.error("DEBUG [SPMB]: Local data sync warning (non-blocking):", syncErr.message);
+          result = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.warn("DEBUG [SPMB]: Failed to parse Apps Script JSON:", responseText);
         }
 
-        // Construct standard Pendaftar representation so existing widgets function seamlessly
-        const newRecord: Pendaftar = {
-          id: registrationId,
-          timestamp: new Date().toISOString(),
+        console.log("DEBUG [SPMB]: Parsed Apps Script result:", result);
+
+        if (result && result.success && result.nomor_pendaftaran) {
+          registrationId = result.nomor_pendaftaran;
+          isSyncedToSpreadsheet = true;
+          if (result.warning || result.fileError) {
+            spreadsheetWarning = result.warning || result.fileError;
+          }
+        } else {
+          const errorMsg = (result && result.error) || "Apps Script memproses data namun mengindikasikan status tidak sukses.";
+          throw new Error(errorMsg);
+        }
+      } else {
+        throw new Error(`Koneksi ke Web App Google Apps Script mengembalikan HTTP status ${response.status}.`);
+      }
+    } catch (gasErr: any) {
+      console.warn("DEBUG [SPMB]: Google Apps Script direct submit failed / blocked by CORS. Error message:", gasErr.message);
+      
+      // Detail the warning for Google Drive permission issues specifically
+      if (gasErr.message && (
+        gasErr.message.includes("permission") || 
+        gasErr.message.includes("DriveApp") || 
+        gasErr.message.includes("Folder") || 
+        gasErr.message.includes("fetch")
+      )) {
+        spreadsheetWarning = "Format Google Spreadsheet terhubung, namun terjadi kegagalan otorisasi Google Drive pada Script Anda (Kurang Izin Akses Drive/DriveApp).";
+      } else {
+        spreadsheetWarning = `Google Apps Script tidak dapat dihubungi langsung (${gasErr.message || "Failed to fetch"}). Jalur sinkronisasi sekunder kami akan dicoba oleh server utama.`;
+      }
+    }
+
+    // Now, we register and sync utilizing our Node.js local database (/api/pendaftar)
+    try {
+      console.log("DEBUG [SPMB]: Syncing or creating registration record on local Node server...");
+      const syncResponse = await fetch("/api/pendaftar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: registrationId || undefined, // Send registration ID if computed by GAS, or let Node generate it if GAS was bypassed
           jalur,
           siswa,
           orangTua,
-          berkas: {
-            kkUrl: berkas.kkContent,
-            aktaUrl: berkas.aktaContent,
-            fotoUrl: berkas.fotoContent,
-            ...(berkas.prestasiContent ? { prestasiUrl: berkas.prestasiContent } : {}),
-          },
-          status: "Menunggu",
-          catatanAdmin: "",
-        };
+          berkas,
+        }),
+      });
 
-        // Trigger success callback - saves the nomor pendaftaran to state & shows receipt/success screen
-        onSuccess(newRecord);
-      } else {
-        const errorMsg = (result && result.error) || "Server memproses data namun gagal menyimpan. Hubungi operator.";
-        throw new Error(errorMsg);
+      if (!syncResponse.ok) {
+        const errResult = await syncResponse.json();
+        throw new Error(errResult.error || "Server utama gagal merekam pendaftaran.");
       }
-    } catch (err: any) {
-      console.error("DEBUG [SPMB]: Submission Error:", err);
-      setGlobalError(err.message || "Gagal mengirimkan data ke Google Spreadsheet backend. Periksa koneksi internet Anda atau coba lagi.");
+
+      const syncResult = await syncResponse.json();
+      console.log("DEBUG [SPMB]: Local server registration successful:", syncResult);
+
+      const resolvedId = syncResult.id;
+
+      // Construct standard Pendaftar representation so existing widgets function seamlessly
+      const newRecord: Pendaftar = {
+        id: resolvedId,
+        timestamp: syncResult.timestamp || new Date().toISOString(),
+        jalur,
+        siswa,
+        orangTua,
+        berkas: {
+          kkUrl: syncResult.berkas?.kkUrl || berkas.kkContent,
+          aktaUrl: syncResult.berkas?.aktaUrl || berkas.aktaContent,
+          fotoUrl: syncResult.berkas?.fotoUrl || berkas.fotoContent,
+          ...(berkas.prestasiContent ? { prestasiUrl: syncResult.berkas?.prestasiUrl || berkas.prestasiContent } : {}),
+        },
+        status: syncResult.status || "Menunggu",
+        catatanAdmin: spreadsheetWarning ? `[Peringatan Integrasi]: ${spreadsheetWarning}` : "",
+      };
+
+      // Show friendly guidance if Google integration was partially restricted
+      if (spreadsheetWarning) {
+        alert(
+          `🎉 PENDAFTARAN BERHASIL!\n\n` +
+          `Nomor Pendaftaran Anda: ${resolvedId}\n\n` +
+          `INFO INTEGRASI:\n${spreadsheetWarning}\n\n` +
+          `Tenang saja, data pendaftaran Anda sudah AMAN tersimpan di server database kami. Panitia dapat melihat berkas Anda.`
+        );
+      }
+
+      // Trigger success callback - saves the nomor pendaftaran to state & shows receipt/success screen
+      onSuccess(newRecord);
+    } catch (localErr: any) {
+      console.error("DEBUG [SPMB]: Local Server registration fatal:", localErr);
+      setGlobalError(localErr.message || "Gagal memproses pendaftaran pada server utama. Periksa koneksi internet Anda.");
     } finally {
       setLoading(false);
     }

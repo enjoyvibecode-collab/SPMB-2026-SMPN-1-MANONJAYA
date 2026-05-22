@@ -3,6 +3,7 @@ import { Calendar, ShieldCheck, HelpCircle, Mail, MessageSquare, Landmark, Arrow
 import Header from './components/Header';
 import Hero from './components/Hero';
 import InformasiJalur from './components/InformasiJalur';
+import PetaZonasi from './components/PetaZonasi';
 import RegistrationForm from './components/RegistrationForm';
 import TrackingSection from './components/TrackingSection';
 import FAQSection from './components/FAQSection';
@@ -158,6 +159,11 @@ export default function App() {
             {/* PATHWAYS INFORMATION (4 CARDS) */}
             <InformasiJalur />
 
+            {/* INTERACTIVE ZONING RADAR MAP COMPONENT */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <PetaZonasi setActiveTab={setActiveTab} />
+            </div>
+
             {/* TIMELINE SECTION (SPEKTACULAR VERTICAL TIMELINE DESIGN) */}
             <section className="py-16 sm:py-20 bg-slate-50 border-t border-b border-slate-100">
               <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -209,6 +215,7 @@ export default function App() {
           <RegistrationForm 
             onSuccess={handleRegistrationSuccess}
             isMaintenance={isMaintenance}
+            spreadsheetUrl={spreadsheetUrl}
           />
         )}
 
